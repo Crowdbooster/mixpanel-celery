@@ -1,7 +1,6 @@
 import httplib
 import urllib
 import base64
-import urlparse
 import logging
 import socket
 
@@ -11,6 +10,14 @@ from celery.task import Task
 from celery.registry import tasks
 
 from mixpanel.conf import settings as mp_settings
+
+
+try:  # Celery >= 3.0
+    from celery.utils.log import get_task_logger
+    logger = get_task_logger(__name__)
+except:  # For older versions of celery
+    logger = logging.getLogger(__name__)
+
 
 class EventTracker(Task):
     """
@@ -38,23 +45,23 @@ class EventTracker(Task):
         `:data:mixpanel.conf.settings.MIXPANEL_TEST_ONLY` setting for determining
         if the event requests should actually be stored on the Mixpanel servers.
         """
-        l = self.get_logger(**kwargs)
-        l.info("Recording event: <%s>" % event_name)
-        if l.logger.getEffectiveLevel() == logging.DEBUG:
+        logger
+        logger.info("Recording event: <%s>" % event_name)
+        if logger.logger.getEffectiveLevel() == logging.DEBUG:
             httplib.HTTPConnection.debuglevel = 1
 
         is_test = self._is_test(test)
         generated_properties = self._handle_properties(properties, token)
 
         url_params = self._build_params(event_name, generated_properties, is_test)
-        l.debug("url_params: <%s>" % url_params)
+        logger.debug("url_params: <%s>" % url_params)
         conn = self._get_connection()
 
         try:
             result = self._send_request(conn, url_params)
         except EventTracker.FailedEventRequest, exception:
             conn.close()
-            l.info("Event failed. Retrying: <%s>" % event_name)
+            logger.info("Event failed. Retrying: <%s>" % event_name)
             kwargs.update({
                 'properties': properties,
                 'token': token,
@@ -67,9 +74,9 @@ class EventTracker(Task):
             return
         conn.close()
         if result:
-            l.info("Event recorded/logged: <%s>" % event_name)
+            logger.info("Event recorded/logged: <%s>" % event_name)
         else:
-            l.info("Event ignored: <%s>" % event_name)
+            logger.info("Event ignored: <%s>" % event_name)
 
         return result
 
@@ -101,8 +108,7 @@ class EventTracker(Task):
                 token = mp_settings.MIXPANEL_API_TOKEN
             properties['token'] = token
 
-        l = self.get_logger()
-        l.debug('pre-encoded properties: <%s>' % repr(properties))
+        logger.debug('pre-encoded properties: <%s>' % repr(properties))
 
         return properties
 
@@ -151,6 +157,7 @@ class EventTracker(Task):
 
 tasks.register(EventTracker)
 
+
 class FunnelEventTracker(EventTracker):
     """
     Task to track a Mixpanel funnel event.
@@ -179,8 +186,7 @@ class FunnelEventTracker(EventTracker):
         `:data:mixpanel.conf.settings.MIXPANEL_TEST_ONLY` setting for determining
         if the event requests should actually be stored on the Mixpanel servers.
         """
-        l = self.get_logger(**kwargs)
-        l.info("Recording funnel: <%s>-<%s>" % (funnel, step))
+        logger.info("Recording funnel: <%s>-<%s>" % (funnel, step))
         properties = self._handle_properties(properties, token)
 
         is_test = self._is_test(test)
@@ -188,14 +194,14 @@ class FunnelEventTracker(EventTracker):
 
         url_params = self._build_params(mp_settings.MIXPANEL_FUNNEL_EVENT_ID,
                                         properties, is_test)
-        l.debug("url_params: <%s>" % url_params)
+        logger.debug("url_params: <%s>" % url_params)
         conn = self._get_connection()
 
         try:
             result = self._send_request(conn, url_params)
         except EventTracker.FailedEventRequest, exception:
             conn.close()
-            l.info("Funnel failed. Retrying: <%s>-<%s>" % (funnel, step))
+            logger.info("Funnel failed. Retrying: <%s>-<%s>" % (funnel, step))
             kwargs.update({
                 'token': token,
                 'test': test})
@@ -207,14 +213,14 @@ class FunnelEventTracker(EventTracker):
             return
         conn.close()
         if result:
-            l.info("Funnel recorded/logged: <%s>-<%s>" % (funnel, step))
+            logger.info("Funnel recorded/logged: <%s>-<%s>" % (funnel, step))
         else:
-            l.info("Funnel ignored: <%s>-<%s>" % (funnel, step))
+            logger.info("Funnel ignored: <%s>-<%s>" % (funnel, step))
 
         return result
 
     def _add_funnel_properties(self, properties, funnel, step, goal):
-        if not properties.has_key('distinct_id'):
+        if not 'distinct_id' in properties:
             error_msg = "A ``distinct_id`` must be given to record a funnel event"
             raise FunnelEventTracker.InvalidFunnelProperties(error_msg)
         properties['funnel'] = funnel
