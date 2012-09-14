@@ -47,7 +47,7 @@ class EventTracker(Task):
         """
         logger
         logger.info("Recording event: <%s>" % event_name)
-        if logger.logger.getEffectiveLevel() == logging.DEBUG:
+        if logger.getEffectiveLevel() == logging.DEBUG:
             httplib.HTTPConnection.debuglevel = 1
 
         is_test = self._is_test(test)
